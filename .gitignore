@@ -16,3 +16,11 @@ node_modules/
 __pycache__/
 .venv/
 venv/
+
+# 运行产物：数据库、WAL、日志、临时仓库
+data/
+*.db
+*.db-wal
+*.db-shm
+*.log
+eqs_quota_*/

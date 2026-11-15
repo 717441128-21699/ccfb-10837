@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>股权穿透采集分析系统</title>
+<style>
+:root{
+  --bg:#0f1419; --panel:#1a2230; --panel2:#222d3f; --line:#2d3a50;
+  --txt:#e6edf3; --muted:#8b98a9; --accent:#4c9aff; --accent2:#36c2a0;
+  --warn:#f0b429; --danger:#ef5f6b; --ok:#3ddc84; --ring:#ff7a59;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);
+  font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;font-size:14px}
+header{display:flex;align-items:center;gap:18px;padding:12px 22px;
+  background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:17px;margin:0;font-weight:600}
+.stats{display:flex;gap:16px;color:var(--muted);font-size:13px}
+.stats b{color:var(--accent)}
+nav{display:flex;gap:4px;padding:0 22px;background:var(--panel);
+  border-bottom:1px solid var(--line)}
+nav button{background:none;border:none;color:var(--muted);padding:12px 18px;
+  cursor:pointer;font-size:14px;border-bottom:2px solid transparent}
+nav button.active{color:var(--accent);border-bottom-color:var(--accent)}
+main{padding:22px;max-width:1500px;margin:0 auto}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:18px;margin-bottom:18px}
+.card h2{font-size:15px;margin:0 0 14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+input,select,button{font:inherit}
+input[type=text],input[type=number],select{background:var(--panel2);
+  border:1px solid var(--line);color:var(--txt);border-radius:7px;
+  padding:9px 12px;min-width:140px}
+input[type=text]{min-width:260px}
+button.btn{background:var(--accent);color:#08111f;border:none;border-radius:7px;
+  padding:9px 16px;font-weight:600;cursor:pointer}
+button.btn.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+button.btn.sm{padding:5px 10px;font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:500}
+tr:hover td{background:var(--panel2)}
+.tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px}
+.tag.sole,.tag.relative{background:rgba(61,220,132,.15);color:var(--ok)}
+.tag.joint{background:rgba(240,180,41,.15);color:var(--warn)}
+.tag.none{background:rgba(139,152,169,.18);color:var(--muted)}
+.tag.running{background:rgba(76,154,255,.18);color:var(--accent)}
+.tag.done{background:rgba(61,220,132,.15);color:var(--ok)}
+.tag.failed,.tag.stopped{background:rgba(239,95,107,.18);color:var(--danger)}
+.muted{color:var(--muted)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:980px){.grid2{grid-template-columns:1fr}}
+#graph{width:100%;height:560px;background:var(--panel2);border-radius:10px;
+  border:1px solid var(--line);overflow:auto}
+.node-company{fill:#24405f;stroke:var(--accent);stroke-width:1.5}
+.node-person{fill:#3a2f4f;stroke:var(--accent2);stroke-width:1.5}
+.node-ring{stroke:var(--ring);stroke-width:3}
+.node-label{fill:var(--txt);font-size:11px;pointer-events:none}
+.edge{stroke:#5a6b85;stroke-width:1.5;fill:none;marker-end:url(#arrow)}
+.edge.ring-edge{stroke:var(--ring);stroke-width:2.5}
+.edge-label{fill:var(--muted);font-size:10px}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-top:8px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}
+.pill{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+  padding:10px 14px;margin-bottom:8px}
+.rule-field{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.rule-field label{width:230px;color:var(--muted)}
+.rule-field input{min-width:100px}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--panel2);
+  border:1px solid var(--accent);border-radius:8px;padding:12px 18px;
+  box-shadow:0 8px 30px rgba(0,0,0,.4);display:none;z-index:50}
+.bar{height:8px;background:var(--panel2);border-radius:6px;overflow:hidden;min-width:120px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.clickable{cursor:pointer;color:var(--accent)}
+.clickable:hover{text-decoration:underline}
+.small{font-size:12px}
+pre{white-space:pre-wrap;word-break:break-all;background:var(--panel2);
+  padding:12px;border-radius:8px;font-size:12px;max-height:300px;overflow:auto}
+</style>
+</head>
+<body>
+<header>
+  <h1>股权穿透采集分析系统</h1>
+  <div class="stats">
+    <span>仿真日 <b id="stat-day">-</b></span>
+    <span>企业 <b id="stat-companies">0</b></span>
+    <span>自然人 <b id="stat-persons">0</b></span>
+    <span>任务 <b id="stat-tasks">0</b></span>
+  </div>
+</header>
+<nav id="nav">
+  <button data-tab="tasks" class="active">查询任务</button>
+  <button data-tab="companies">企业库</button>
+  <button data-tab="graph">股权图</button>
+  <button data-tab="controller">实控人</button>
+  <button data-tab="accounts">账号配额</button>
+  <button data-tab="verify">核对验收</button>
+  <button data-tab="rules">规则配置</button>
+</nav>
+<main>
+  <!-- 任务 -->
+  <section id="tab-tasks">
+    <div class="card">
+      <h2>新建穿透查询任务</h2>
+      <div class="row">
+        <input type="text" id="task-query" placeholder="输入企业名称 / 统一社会信用代码 / 企业ID">
+        <label class="muted">穿透深度</label>
+        <input type="number" id="task-depth" value="3" min="0" max="20" style="min-width:80px">
+        <label class="muted"><input type="checkbox" id="task-nominee" checked> 穿透代持</label>
+        <button class="btn" id="btn-create-task">创建任务</button>
+      </div>
+      <p class="muted small" style="margin-top:10px">
+        从根公司自下而上逐层抓取股东，公司型股东自动继续向上穿透；同一家公司的不同写法会自动识别为同一家。</p>
+    </div>
+    <div class="card">
+      <h2>任务列表</h2>
+      <table><thead><tr><th>#</th><th>根查询</th><th>深度</th><th>状态</th>
+        <th>进度</th><th>创建时间</th><th>操作</th></tr></thead>
+      <tbody id="task-tbody"></tbody></table>
+    </div>
+  </section>
+
+  <!-- 企业库 -->
+  <section id="tab-companies" hidden>
+    <div class="card">
+      <h2>企业库</h2>
+      <div class="row">
+        <input type="text" id="company-q" placeholder="搜索企业名称 / 信用代码 / ID">
+        <button class="btn" id="btn-search-company">搜索</button>
+        <button class="btn ghost" id="btn-all-companies">全部</button>
+      </div>
+    </div>
+    <div class="card">
+      <table><thead><tr><th>企业ID</th><th>名称</th><th>信用代码</th>
+        <th>行业</th><th>资料模式</th><th>最近同步</th><th></th></tr></thead>
+      <tbody id="company-tbody"></tbody></table>
+    </div>
+    <div class="card" id="company-detail-card" hidden></div>
+  </section>
+
+  <!-- 股权图 -->
+  <section id="tab-graph" hidden>
+    <div class="card">
+      <h2>股权穿透图</h2>
+      <div class="row">
+        <input type="text" id="graph-company" placeholder="企业ID，如 C000007">
+        <label class="muted">深度</label>
+        <input type="number" id="graph-depth" value="4" min="0" max="20" style="min-width:80px">
+        <label class="muted">回放日期</label>
+        <input type="text" id="graph-asof" placeholder="YYYY-MM-DD（留空=当前）">
+        <button class="btn" id="btn-draw">生成股权图</button>
+      </div>
+      <div class="legend">
+        <span><i class="dot" style="background:#24405f;border:1px solid var(--accent)"></i>公司</span>
+        <span><i class="dot" style="background:#3a2f4f;border:1px solid var(--accent2)"></i>自然人</span>
+        <span><i class="dot" style="background:var(--ring)"></i>环形/交叉持股</span>
+      </div>
+      <div id="graph"></div>
+      <div id="graph-meta" class="muted small" style="margin-top:8px"></div>
+    </div>
+    <div class="grid2">
+      <div class="card" id="cap-table-card"><h2>当前股东表</h2><div id="cap-table"></div></div>
+      <div class="card" id="history-card"><h2>股东变更时间轴 / 任意日回放</h2>
+        <div class="row" style="margin-bottom:10px">
+          <input type="text" id="replay-date" placeholder="YYYY-MM-DD">
+          <button class="btn sm" id="btn-replay">回放该日股东表</button>
+        </div>
+        <div id="history"></div></div>
+    </div>
+  </section>
+
+  <!-- 实控人 -->
+  <section id="tab-controller" hidden>
+    <div class="card">
+      <h2>实际控制人判定</h2>
+      <div class="row">
+        <input type="text" id="ctrl-company" placeholder="企业ID，如 C000007">
+        <button class="btn" id="btn-ctrl">判定实控人</button>
+        <button class="btn ghost" id="btn-batch-ctrl">批量判定（前100家）</button>
+      </div>
+    </div>
+    <div class="card" id="ctrl-result" hidden></div>
+    <div class="card" id="ctrl-batch" hidden><h2>批量判定结果</h2>
+      <table><thead><tr><th>企业</th><th>类型</th><th>控制人</th><th>依据</th></tr></thead>
+      <tbody id="ctrl-batch-body"></tbody></table></div>
+  </section>
+
+  <!-- 配额 -->
+  <section id="tab-accounts" hidden>
+    <div class="card">
+      <h2>账号配额监控 <span class="muted small">（虚拟日：<span id="acc-day"></span>）</span></h2>
+      <table><thead><tr><th>账号</th><th>当日额度</th><th>已用</th><th>剩余</th>
+        <th>用量</th><th>状态</th><th>冷却</th><th>操作</th></tr></thead>
+      <tbody id="account-tbody"></tbody></table>
+      <p class="muted small" style="margin-top:10px">
+        采集器自动轮用可用账号；账号当日配额耗尽后自动歇到下一个虚拟日，届时自动恢复。</p>
+    </div>
+  </section>
+
+  <!-- 核对 -->
+  <section id="tab-verify" hidden>
+    <div class="card">
+      <h2>实控人核对验收（引擎结果 vs 仿真站预设答案）</h2>
+      <div class="row">
+        <button class="btn" id="btn-run-verify">运行全量核对（3000家）</button>
+        <button class="btn ghost" id="btn-load-verify">载入最近报告</button>
+      </div>
+      <div id="verify-summary" style="margin-top:14px"></div>
+    </div>
+    <div class="card" id="verify-detail-card" hidden>
+      <h2>不一致明细</h2>
+      <table><thead><tr><th>企业</th><th>预设</th><th>引擎</th><th>原因</th></tr></thead>
+      <tbody id="verify-body"></tbody></table>
+    </div>
+  </section>
+
+  <!-- 规则 -->
+  <section id="tab-rules" hidden>
+    <div class="card">
+      <h2>实控人判定规则（可调）</h2>
+      <div class="rule-field"><label>单独控制：表决权超过</label>
+        <input type="number" step="0.01" id="r-voting"><span class="muted">（小数，0.5=50%）</span></div>
+      <div class="rule-field"><label>共同控制：多名股东表决权达到</label>
+        <input type="number" step="0.01" id="r-joint"><span class="muted">（小数）</span></div>
+      <div class="rule-field"><label>相对控制：最低表决权</label>
+        <input type="number" step="0.01" id="r-pmin"><span class="muted">（小数）</span></div>
+      <div class="rule-field"><label>相对控制：领先第二大幅度</label>
+        <input type="number" step="0.01" id="r-margin"><span class="muted">（小数）</span></div>
+      <div class="rule-field"><label>递归追溯上层公司实控人</label>
+        <input type="checkbox" id="r-chain"></div>
+      <div class="rule-field"><label>穿透代持到实际权益人</label>
+        <input type="checkbox" id="r-nominee"></div>
+      <div class="rule-field"><label>最大追溯层数</label>
+        <input type="number" id="r-maxdepth"></div>
+      <div class="row"><input type="text" id="r-name" placeholder="规则名称" value="自定义规则">
+        <button class="btn" id="btn-save-rules">保存并启用</button></div>
+    </div>
+    <div class="card"><h2>已保存规则</h2><table><thead><tr><th>#</th><th>名称</th>
+        <th>启用</th><th>创建时间</th></tr></thead><tbody id="rules-body"></tbody></table></div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = async (url, opt) => {
+  const r = await fetch(url, opt);
+  if(!r.ok){ let e={}; try{e=await r.json()}catch{} throw new Error(e.error||r.status); }
+  return r.status===204?null:r.json();
+};
+const toast = msg => { const t=$('#toast'); t.textContent=msg; t.style.display='block';
+  setTimeout(()=>t.style.display='none',2600); };
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pct = v => (v==null?'-':Number(v).toFixed(2)+'%');
+
+// ---------- tab 切换 ----------
+$('#nav').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  document.querySelectorAll('main > section').forEach(s=>s.hidden=true);
+  $('#tab-'+b.dataset.tab).hidden=false;
+  if(b.dataset.tab==='accounts') loadAccounts();
+  if(b.dataset.tab==='rules') loadRules();
+  if(b.dataset.tab==='verify') loadLatestVerify();
+});
+
+// ---------- 顶部统计 ----------
+async function loadStats(){
+  try{ const s = await api('/api/stats');
+    $('#stat-day').textContent=s.sim_day||'-';
+    $('#stat-companies').textContent=s.companies;
+    $('#stat-persons').textContent=s.persons;
+    $('#stat-tasks').textContent=s.tasks;
+  }catch{}
+}
+
+// ---------- 任务 ----------
+$('#btn-create-task').onclick = async () => {
+  const query=$('#task-query').value.trim();
+  if(!query) return toast('请输入企业名称');
+  try{
+    const r = await api('/api/tasks',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({query,max_depth:+$('#task-depth').value,
+        follow_nominee:$('#task-nominee').checked})});
+    toast('任务 #'+r.task_id+' 已创建');
+    $('#task-query').value='';
+    loadTasks();
+  }catch(e){ toast('创建失败: '+e.message); }
+};
+async function loadTasks(){
+  const rows = await api('/api/tasks');
+  $('#task-tbody').innerHTML = rows.map(t=>{
+    const prog = t.total_nodes? `${t.done_nodes}/${t.total_nodes}`:'-';
+    return `<tr><td>${t.task_id}</td><td>${esc(t.root_query)}</td>
+      <td>${t.max_depth}</td><td><span class="tag ${t.status}">${t.status}</span></td>
+      <td>${prog}</td><td class="small muted">${esc(t.created_at)}</td>
+      <td>${['running','pending'].includes(t.status)?
+        `<button class="btn sm ghost" onclick="stopTask(${t.task_id})">停止</button>`:''}</td></tr>`;
+  }).join('') || '<tr><td colspan="7" class="muted">暂无任务</td></tr>';
+}
+window.stopTask = async id => { await api(`/api/tasks/${id}/stop`,{method:'POST'}); toast('已请求停止'); loadTasks(); };
+
+// ---------- 企业库 ----------
+async function searchCompanies(q){
+  const url = q?`/api/companies?q=${encodeURIComponent(q)}`:'/api/companies';
+  const rows = await api(url);
+  $('#company-tbody').innerHTML = rows.map(c=>`<tr>
+    <td>${c.company_id}</td><td class="clickable" onclick="showCompany('${c.company_id}')">${esc(c.name)}</td>
+    <td class="small">${esc(c.credit_code||'')}</td><td>${esc(c.industry||'')}</td>
+    <td><span class="tag ${c.profile_mode==='change'?'joint':'done'}">${c.profile_mode||'-'}</span></td>
+    <td class="small muted">${esc(c.last_synced_at||'')}</td>
+    <td><button class="btn sm" onclick="jumpGraph('${c.company_id}')">看图</button></td></tr>`).join('')
+    || '<tr><td colspan="7" class="muted">无匹配企业</td></tr>';
+}
+$('#btn-search-company').onclick=()=>searchCompanies($('#company-q').value.trim());
+$('#btn-all-companies').onclick=()=>searchCompanies('');
+window.jumpGraph = id => {
+  document.querySelector('#nav button[data-tab=graph]').click();
+  $('#graph-company').value=id; drawGraph();
+};
+window.showCompany = async id => {
+  const d = await api(`/api/companies/${id}`);
+  const c=d.company;
+  $('#company-detail-card').hidden=false;
+  $('#company-detail-card').innerHTML = `<h2>${esc(c.name)} <span class="muted small">${c.company_id}</span></h2>
+    <div class="small muted" style="margin-bottom:12px">信用代码 ${esc(c.credit_code)} ·
+      成立 ${esc(c.established_date)} · ${esc(c.region)} · ${esc(c.industry)} ·
+      别名: ${d.aliases.map(esc).join('、')||'无'}</div>
+    <table><thead><tr><th>股东类型</th><th>股东</th><th>持股%</th><th>表决权%</th><th>代持</th></tr></thead>
+    <tbody>${d.holders.map(h=>`<tr><td>${h.holder_kind}</td>
+      <td class="clickable" ${h.holder_kind==='company'?`onclick="showCompany('${h.holder_id}')"`:''}>${esc(h.holder_name)}</td>
+      <td>${pct(h.shares_pct)}</td><td>${pct(h.voting_pct)}</td>
+      <td>${h.is_nominee?'是':''}</td></tr>`).join('')}</tbody></table>`;
+};
+
+// ---------- 股权图 ----------
+let graphData=null;
+$('#btn-draw').onclick=drawGraph;
+async function drawGraph(){
+  const id=$('#graph-company').value.trim(); if(!id) return toast('请输入企业ID');
+  const depth=$('#graph-depth').value; const asof=$('#graph-asof').value.trim();
+  let url=`/api/graph/${id}?depth=${depth}`; if(asof) url+=`&as_of=${asof}`;
+  try{ graphData=await api(url); }catch(e){ return toast('加载失败: '+e.message); }
+  renderGraph(graphData);
+  loadCapTable(id, asof); loadHistory(id);
+}
+function renderGraph(d){
+  // 分层布局：按到根的向上距离分层（holder 在上方）
+  const nodes=d.nodes, edges=d.edges;
+  const adj={}; edges.forEach(e=>{(adj[e.target]??=[]).push(e.source)});
+  const level={[d.root]:0}; const q=[d.root];
+  while(q.length){ const cur=q.shift();
+    (adj[cur]||[]).forEach(src=>{ if(!(src in level)){ level[src]=level[cur]+1; q.push(src);} }); }
+  const byLevel={};
+  nodes.forEach(n=>{ const l=level[n.id]??0; (byLevel[l]??=[]).push(n); });
+  const W=Math.max(900, nodes.length*70), rowH=130, H=(Object.keys(byLevel).length)*rowH+60;
+  const pos={};
+  Object.keys(byLevel).sort((a,b)=>a-b).forEach(l=>{
+    const arr=byLevel[l]; const gap=W/(arr.length+1);
+    arr.forEach((n,i)=>{ pos[n.id]={x:gap*(i+1), y:H-40-l*rowH}; });
+  });
+  const ringSet=new Set((d.cycles||[]).flat());
+  let svg=`<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+    <path d="M0,0 L7,3 L0,6 Z" fill="#5a6b85"/></marker></defs>`;
+  edges.forEach(e=>{
+    const a=pos[e.source],b=pos[e.target]; if(!a||!b)return;
+    const isRing=ringSet.has(e.source)&&ringSet.has(e.target);
+    svg+=`<line class="edge ${isRing?'ring-edge':''}" x1="${a.x}" y1="${a.y+18}" x2="${b.x}" y2="${b.y-18}"/>`;
+    const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+    svg+=`<text class="edge-label" x="${mx}" y="${my}">${Number(e.voting_pct).toFixed(1)}%</text>`;
+  });
+  nodes.forEach(n=>{
+    const p=pos[n.id]; if(!p)return;
+    const isRing=ringSet.has(n.id); const cls=n.kind==='person'?'node-person':'node-company';
+    svg+=`<g><rect class="${cls} ${isRing?'node-ring':''}" x="${p.x-55}" y="${p.y-18}" width="110" height="36" rx="8"/>
+      <text class="node-label" x="${p.x}" y="${p.y+4}" text-anchor="middle">${esc(n.name).slice(0,9)}</text></g>`;
+  });
+  svg+='</svg>';
+  $('#graph').innerHTML=svg;
+  $('#graph-meta').textContent=`节点 ${d.node_count} · 关系 ${d.edge_count} ·
+    检出环 ${(d.cycles||[]).length} 个${d.as_of?(' · 回放至 '+d.as_of):''}`;
+}
+async function loadCapTable(id, asof){
+  let d;
+  if(asof){ d=await api(`/api/companies/${id}/cap-table?as_of=${asof}`); }
+  else { const full=await api(`/api/companies/${id}`); d={holders:full.holders}; }
+  $('#cap-table').innerHTML=`<table><thead><tr><th>股东</th><th>类型</th>
+    <th>持股%</th><th>表决权%</th></tr></thead><tbody>${
+    d.holders.map(h=>`<tr><td>${esc(h.holder_name||h.holder_id)}</td>
+    <td>${h.holder_kind}</td><td>${pct(h.shares_pct)}</td><td>${pct(h.voting_pct)}</td></tr>`).join('')
+    ||'<tr><td colspan="4" class="muted">无数据</td></tr>'}</tbody></table>`;
+}
+async function loadHistory(id){
+  try{
+    const d=await api(`/api/companies/${id}/history`);
+    $('#history').innerHTML=(d.change_dates.length?
+      `<div class="muted small" style="margin-bottom:8px">变更日期: ${d.change_dates.join(' · ')}</div>`:'')
+      + d.events.map(e=>`<div class="pill small">${esc(e.event_date)}
+        ${esc(e.holder_name)}（${e.holder_kind}）股权 ${pct(e.shares_pct)}
+        表决权 ${pct(e.voting_pct)} ${e.is_nominee?'[代持]':''}
+        ${e.valid_to?`→生效至 ${esc(e.valid_to)}`:'至今'} <span class="muted">${esc(e.note||'')}</span></div>`).join('')
+      || '<span class="muted">该企业为直接公示模式，无变更记录</span>';
+  }catch{ $('#history').innerHTML='<span class="muted">无历史数据</span>'; }
+}
+$('#btn-replay').onclick=async()=>{
+  const id=$('#graph-company').value.trim(); const date=$('#replay-date').value.trim();
+  if(!id||!date) return toast('请输入企业ID和日期');
+  try{ const d=await api(`/api/companies/${id}/cap-table?as_of=${date}`);
+    $('#cap-table-card').innerHTML=`<h2>${date} 股东表 ${d.approximate?'<span class="muted small">(近似:无变更记录,取当前)</span>':''}</h2>
+      <table><thead><tr><th>股东</th><th>持股%</th><th>表决权%</th></tr></thead><tbody>${
+      d.holders.map(h=>`<tr><td>${esc(h.holder_name||h.holder_id)}</td>
+      <td>${pct(h.shares_pct)}</td><td>${pct(h.voting_pct)}</td></tr>`).join('')}</tbody></table>`;
+    toast('已回放 '+date);
+  }catch(e){ toast('回放失败: '+e.message); }
+};
+
+// ---------- 实控人 ----------
+$('#btn-ctrl').onclick=async()=>{
+  const id=$('#ctrl-company').value.trim(); if(!id) return;
+  try{ const r=await api(`/api/controller/${id}`); renderCtrl(r); }
+  catch(e){ toast('判定失败: '+e.message); }
+};
+function renderCtrl(r){
+  $('#ctrl-result').hidden=false;
+  const typeMap={sole:'单独控制',relative:'相对控制',joint:'共同控制',none:'无实际控制人'};
+  $('#ctrl-result').innerHTML=`<h2>${esc(r.company_name)} <span class="muted small">${r.company_id}</span></h2>
+    <p><span class="tag ${r.control_type}">${typeMap[r.control_type]||r.control_type}</span>
+      <b style="margin-left:10px">${r.controller_names.map(esc).join('、')||'—'}</b>
+      <span class="muted small">（置信度 ${r.confidence}）</span></p>
+    <p class="small">${esc(r.rationale)}</p>
+    <h3 class="small muted">直接表决权</h3>
+    <table><thead><tr><th>股东</th><th>类型</th><th>持股%</th><th>表决权%</th></tr></thead><tbody>
+    ${r.direct_voting.map(v=>`<tr><td>${v.holder_id}</td><td>${v.holder_kind}</td>
+      <td>${pct(v.shares_pct)}</td><td>${pct(v.voting_pct)}</td></tr>`).join('')}</tbody></table>
+    <h3 class="small muted" style="margin-top:14px">最终受益人（穿透后）</h3>
+    <table><thead><tr><th>自然人</th><th>证件尾号</th><th>最终持股%</th><th>最终表决权%</th></tr></thead><tbody>
+    ${r.ultimate_beneficiaries.map(b=>`<tr><td>${esc(b.name)}</td><td>${esc(b.id_tail)}</td>
+      <td>${pct(b.ultimate_shares_pct)}</td><td>${pct(b.ultimate_voting_pct)}</td></tr>`).join('')
+      ||'<tr><td colspan="4" class="muted">无</td></tr>'}</tbody></table>
+    <h3 class="small muted" style="margin-top:14px">控制链条</h3><pre>${r.chain.map(s=>
+      '  '.repeat(s.level)+`L${s.level} ${s.holder_name||s.holder_id} (${pct(s.voting_pct)})`).join('\n')}</pre>`;
+}
+$('#btn-batch-ctrl').onclick=async()=>{
+  const comps=await api('/api/companies?limit=100');
+  const body=$('#ctrl-batch-body'); $('#ctrl-batch').hidden=false; body.innerHTML='';
+  const typeMap={sole:'单独控制',relative:'相对控制',joint:'共同控制',none:'无控制人'};
+  for(const c of comps.slice(0,100)){
+    try{ const r=await api(`/api/controller/${c.company_id}`);
+      body.insertAdjacentHTML('beforeend',`<tr><td>${esc(c.name)}</td>
+        <td><span class="tag ${r.control_type}">${typeMap[r.control_type]||r.control_type}</span></td>
+        <td>${r.controller_names.map(esc).join('、')||'—'}</td>
+        <td class="small muted">${esc(r.rationale)}</td></tr>`);
+    }catch(e){ body.insertAdjacentHTML('beforeend',
+      `<tr><td>${esc(c.name)}</td><td colspan="3" class="muted">${e.message}</td></tr>`); }
+  }
+  toast('批量判定完成');
+};
+
+// ---------- 账号配额 ----------
+async function loadAccounts(){
+  const d=await api('/api/accounts'); $('#acc-day').textContent=d.sim_day||'-';
+  $('#account-tbody').innerHTML=d.accounts.map(a=>{
+    const pctUsed=(a.used/a.daily_quota*100).toFixed(1);
+    const status=a.exhausted?'<span class="tag failed">当日耗尽</span>':
+      a.enabled?'<span class="tag done">可用</span>':'<span class="tag none">已停用</span>';
+    return `<tr><td>${a.account_id}</td><td>${a.daily_quota}</td><td>${a.used}</td>
+      <td>${a.remaining}</td>
+      <td><div class="bar"><i style="width:${pctUsed}%"></i></div><span class="small muted">${pctUsed}%</span></td>
+      <td>${status}</td><td>${a.cooldown_seconds?a.cooldown_seconds+'s':'-'}</td>
+      <td><button class="btn sm ghost" onclick="toggleAccount('${a.account_id}',${a.enabled?0:1})">
+        ${a.enabled?'停用':'启用'}</button></td></tr>`;
+  }).join('');
+}
+window.toggleAccount=async(id,en)=>{ await api(`/api/accounts/${id}/toggle`,
+  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!!en})});
+  toast('已更新'); loadAccounts(); };
+
+// ---------- 核对 ----------
+$('#btn-run-verify').onclick=async()=>{
+  toast('正在全量核对，请稍候…');
+  try{ const r=await api('/api/verify/run',{method:'POST'}); renderVerify(r); toast('核对完成'); }
+  catch(e){ toast('核对失败: '+e.message); }
+};
+$('#btn-load-verify').onclick=loadLatestVerify;
+function renderVerify(r){
+  const acc=r.accuracy!==undefined?r.accuracy:(r.matched/(r.matched+r.mismatched||1));
+  $('#verify-summary').innerHTML=`<div class="grid2">
+    <div class="pill"><h2 style="margin:0 0 8px">总企业数</h2><div style="font-size:28px">${r.total}</div></div>
+    <div class="pill"><h2 style="margin:0 0 8px">准确率</h2><div style="font-size:28px;color:var(--ok)">${(acc*100).toFixed(2)}%</div></div>
+    <div class="pill">一致 <b style="color:var(--ok)">${r.matched}</b> · 不一致 <b style="color:var(--danger)">${r.mismatched}</b> · 无答案 <b>${r.unknown}</b></div>
+  </div>`;
+  const bad=(r.details||[]).filter(x=>!x.match);
+  $('#verify-detail-card').hidden=bad.length===0;
+  $('#verify-body').innerHTML=bad.map(x=>`<tr><td>${esc(x.company_name)}</td>
+    <td>${x.preset_type} ${(x.preset_persons||[]).join(',')}</td>
+    <td>${x.computed_type} ${(x.computed_persons||[]).join(',')}</td>
+    <td class="small muted">${esc(x.reason)}</td></tr>`).join('')
+    || '<tr><td colspan="4" class="muted">全部一致，无不一致明细</td></tr>';
+}
+async function loadLatestVerify(){
+  try{ const r=await api('/api/verify/latest');
+    if(!r){ $('#verify-summary').innerHTML='<span class="muted">暂无报告，请运行核对</span>';
+      $('#verify-detail-card').hidden=true; return; }
+    r.details=r.detail; renderVerify(r);
+  }catch{ /* ignore */ }
+}
+
+// ---------- 规则 ----------
+async function loadRules(){
+  const rows=await api('/api/rules');
+  const active=rows.find(r=>r.is_active);
+  if(active){ const r=JSON.parse(active.rules_json);
+    $('#r-voting').value=r.voting_threshold; $('#r-joint').value=r.joint_threshold;
+    $('#r-pmin').value=r.plurality_min; $('#r-margin').value=r.plurality_margin;
+    $('#r-chain').checked=r.chain_control; $('#r-nominee').checked=r.follow_nominee;
+    $('#r-maxdepth').value=r.max_chain_depth;
+  }
+  $('#rules-body').innerHTML=rows.map(r=>`<tr><td>${r.config_id}</td><td>${esc(r.name)}</td>
+    <td>${r.is_active?'<span class="tag done">启用中</span>':''}</td>
+    <td class="small muted">${esc(r.created_at)}</td></tr>`).join('');
+}
+$('#btn-save-rules').onclick=async()=>{
+  const rules={voting_threshold:+$('#r-voting').value,joint_threshold:+$('#r-joint').value,
+    plurality_min:+$('#r-pmin').value,plurality_margin:+$('#r-margin').value,
+    chain_control:$('#r-chain').checked,follow_nominee:$('#r-nominee').checked,
+    max_chain_depth:+$('#r-maxdepth').value};
+  try{ await api('/api/rules',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:$('#r-name').value||'自定义规则',rules})});
+    toast('规则已保存并启用'); loadRules();
+  }catch(e){ toast('保存失败: '+e.message); }
+};
+
+// ---------- 初始化轮询 ----------
+loadStats(); loadTasks(); searchCompanies('');
+setInterval(()=>{ loadStats();
+  if(!$('#tab-tasks').hidden) loadTasks();
+  if(!$('#tab-accounts').hidden) loadAccounts();
+}, 5000);
+</script>
+</body>
+</html>
